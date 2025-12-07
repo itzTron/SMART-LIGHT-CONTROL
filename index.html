@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LED Controller</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Paho MQTT Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center font-sans">
+
+    <!-- Mobile App Container -->
+    <div class="bg-gray-800 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-gray-700 h-[600px] flex flex-col relative">
+        
+        <!-- Status Bar -->
+        <div class="bg-gray-900 px-6 py-3 flex justify-between items-center text-xs text-gray-400">
+            <span>Wokwi Remote</span>
+            <div id="connection-status" class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                Disconnected
+            </div>
+        </div>
+
+        <!-- Header -->
+        <div class="p-8 text-center mt-4">
+            <h1 class="text-2xl font-bold mb-1">Smart LED</h1>
+            <p class="text-gray-400 text-sm">IoT Control System</p>
+        </div>
+
+        <!-- Main Control Area -->
+        <div class="flex-1 flex flex-col items-center justify-center gap-8 relative z-10">
+            
+            <!-- Bulb Icon Visualization -->
+            <div id="bulb-icon" class="text-gray-700 transition-all duration-500 transform scale-100">
+                <i class="fas fa-lightbulb text-9xl"></i>
+            </div>
+
+            <!-- Controls -->
+            <div class="flex gap-4 w-full px-8">
+                <button onclick="publishMessage('ON')" class="flex-1 bg-gradient-to-br from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 text-white font-bold py-4 rounded-xl shadow-lg transform transition active:scale-95 flex flex-col items-center gap-2">
+                    <i class="fas fa-power-off"></i>
+                    ON
+                </button>
+                <button onclick="publishMessage('OFF')" class="flex-1 bg-gradient-to-br from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white font-bold py-4 rounded-xl shadow-lg transform transition active:scale-95 flex flex-col items-center gap-2">
+                    <i class="far fa-circle"></i>
+                    OFF
+                </button>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="bg-gray-900 p-4 text-center text-xs text-gray-500">
+            Broker: broker.hivemq.com
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        // MUST Match the ESP32 Code
+        const mqtt_broker = "broker.hivemq.com";
+        const mqtt_port = 8884; // UPDATED: Secure WebSocket port (WSS)
+        const topic = "wokwi-demo/led/control"; 
+        
+        let client;
+        const statusDiv = document.getElementById('connection-status');
+        const bulbIcon = document.getElementById('bulb-icon');
+
+        function connectMQTT() {
+            // Generate a random client ID
+            const clientId = "WebApp-" + Math.random().toString(16).substr(2, 8);
+            
+            client = new Paho.MQTT.Client(mqtt_broker, mqtt_port, clientId);
+
+            client.onConnectionLost = onConnectionLost;
+            client.onMessageArrived = onMessageArrived;
+
+            const options = {
+                useSSL: true, // UPDATED: Must be true for HTTPS pages
+                onSuccess: onConnect,
+                onFailure: onFailure,
+                timeout: 3
+            };
+
+            updateStatus("Connecting...", "yellow");
+            client.connect(options);
+        }
+
+        function onConnect() {
+            updateStatus("Connected", "green");
+            console.log("Connected to MQTT Broker");
+        }
+
+        function onFailure(message) {
+            updateStatus("Failed", "red");
+            console.log("Connection failed: " + message.errorMessage);
+            setTimeout(connectMQTT, 2000); // Retry
+        }
+
+        function onConnectionLost(responseObject) {
+            if (responseObject.errorCode !== 0) {
+                console.log("Connection Lost: " + responseObject.errorMessage);
+                updateStatus("Disconnected", "red");
+                setTimeout(connectMQTT, 2000); // Retry
+            }
+        }
+
+        function onMessageArrived(message) {
+            console.log("Msg: " + message.payloadString);
+        }
+
+        function publishMessage(payload) {
+            if (!client || !client.isConnected()) {
+                alert("Not connected to server yet!");
+                return;
+            }
+
+            const message = new Paho.MQTT.Message(payload);
+            message.destinationName = topic;
+            client.send(message);
+
+            // Update UI immediately for better feedback
+            updateUI(payload === "ON");
+        }
+
+        function updateUI(isOn) {
+            if (isOn) {
+                bulbIcon.classList.remove('text-gray-700');
+                bulbIcon.classList.add('text-yellow-400', 'drop-shadow-[0_0_35px_rgba(250,204,21,0.6)]');
+            } else {
+                bulbIcon.classList.add('text-gray-700');
+                bulbIcon.classList.remove('text-yellow-400', 'drop-shadow-[0_0_35px_rgba(250,204,21,0.6)]');
+            }
+        }
+
+        function updateStatus(text, color) {
+            let colorClass = "bg-gray-500";
+            if(color === "green") colorClass = "bg-green-500";
+            if(color === "red") colorClass = "bg-red-500";
+            if(color === "yellow") colorClass = "bg-yellow-500";
+
+            statusDiv.innerHTML = `
+                <div class="w-2 h-2 rounded-full ${colorClass} ${color !== 'green' ? 'animate-pulse' : ''}"></div>
+                ${text}
+            `;
+        }
+
+        // Start connection
+        connectMQTT();
+    </script>
+</body>
+</html>
